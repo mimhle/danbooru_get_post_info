@@ -42,7 +42,8 @@ def danbooru_post_info_request(min_id=1, max_id=10000000, timeout=43200, max_att
             for attempt in range(max_attempts):
                 try:
                     if not i % 10 - 1:
-                        if (curr_time := time.time()) >= time_:
+                        curr_time = time.time()
+                        if curr_time >= time_:
                             return result + [f"Stop at {i}, timeout {round(curr_time - (time_ - timeout), 1)}s in"]
                     response = requests.get(f"https://danbooru.donmai.us/posts/{i}.json")
                     response_json = response.json()
