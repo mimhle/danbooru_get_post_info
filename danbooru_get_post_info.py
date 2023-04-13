@@ -36,6 +36,7 @@ def timer(func):
 def danbooru_post_info_request(min_id=1, max_id=10000000, timeout=43200, max_attempts=10):
     result = []
     time_ = time.time() + timeout
+    response = None
     response_json = {}
     with tqdm(total=max_id - min_id + 1) as pb:
         for i in range(min_id, max_id + 1):
