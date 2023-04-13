@@ -12,7 +12,8 @@ This script is used to get the post information from danbooru.donmai.us. It will
 * -r, retry: The retry times for each request. Default is 10.
 * -h, --help: Show the help message and exit.
 ### Output
-The output file will be named as &lt;stop&gt;.json and will be saved in the same directory as the script.
+The output file will be named as `<start>-<stop>.json` if stop is specified, or `<start>.json` if stop is not specified.
+The output file will be saved in the same directory as the script.
 ## Contributing
 This project is open to contributions. If you want to contribute, feel free to open an issue or pull request.
 ## License
