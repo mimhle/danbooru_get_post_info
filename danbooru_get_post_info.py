@@ -73,7 +73,8 @@ def main(start, stop=None, timeout=3600, max_attempts=10):
     post_info = danbooru_post_info_request(start, stop, timeout, max_attempts)
     if isinstance(post_info[-1], str):
         print(post_info[-1])
-    save_to_json(post_info, f"./{stop}.json")
+    file_name = f"{start}-{stop}.json" if start != stop else f"{start}.json"
+    save_to_json(post_info, file_name)
 
 
 if __name__ == "__main__":
