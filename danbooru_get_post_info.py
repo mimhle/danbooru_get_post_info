@@ -53,11 +53,10 @@ def danbooru_post_info_request(min_id=1, max_id=10000000, timeout=43200, max_att
         for i in range(min_id, max_id + 1):
             for attempt in loop:
                 try:
-                    if not i % 10 - 1:
-                        curr_time = time.time()
-                        if curr_time >= time_:
-                            return result + [f"Stop at {i}, timeout {round(curr_time - (time_ - timeout), 1)}s in"]
-                    response = requests.get(f"https://danbooru.donmai.us/posts/{i}.json")
+                    curr_time = time.time()
+                    if curr_time >= time_:
+                        return result + [f"Stop at {i}, timeout {round(curr_time - (time_ - timeout), 1)}s in"]
+                    response = requests.get(f"https://danbooru.donmai.us/posts/{i}.json", timeout=100)
                     response_json = response.json()
                 except KeyboardInterrupt:
                     return result + [f"Stop at {i}, keyboard interrupt"]
