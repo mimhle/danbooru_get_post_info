@@ -8,7 +8,7 @@ Usage:
 Options:
     -h --help       Show this screen.
     -t --timeout    Timeout in seconds (for all posts) [default: 3600].
-    -r --retry      Retry times [default: 10].
+    -r --retry      Retry times, -1 for infinite retry [default: 10].
 
 Returns:
     A json file with post info.
@@ -32,15 +32,26 @@ def timer(func):
     return wrapper
 
 
+def infinity():
+    while True:
+        yield True
+
+
 @timer
 def danbooru_post_info_request(min_id=1, max_id=10000000, timeout=43200, max_attempts=10):
     result = []
     time_ = time.time() + timeout
     response = None
     response_json = {}
+
+    if max_attempts < 0:
+        loop = infinity()
+    else:
+        loop = iter(list(range(max_attempts)))
+
     with tqdm(total=max_id - min_id + 1) as pb:
         for i in range(min_id, max_id + 1):
-            for attempt in range(max_attempts):
+            for attempt in loop:
                 try:
                     if not i % 10 - 1:
                         curr_time = time.time()
@@ -51,7 +62,7 @@ def danbooru_post_info_request(min_id=1, max_id=10000000, timeout=43200, max_att
                 except KeyboardInterrupt:
                     return result + [f"Stop at {i}, keyboard interrupt"]
                 except Exception as error:
-                    if attempt >= max_attempts - 1:
+                    if attempt is not True and attempt >= max_attempts - 1:
                         return result + [f"Stop at {i}, error {error}, response {response}"]
                     else:
                         time.sleep(0.1)
@@ -84,6 +95,6 @@ if __name__ == "__main__":
     parser.add_argument("start", type=int, help="start id")
     parser.add_argument("stop", type=int, nargs="?", help="stop id")
     parser.add_argument("-t", "--timeout", type=int, default=3600, help="timeout in seconds (all posts) (default: 3600)")
-    parser.add_argument("-r", "--retry", type=int, default=10, help="max retry attempts (default: 10)")
+    parser.add_argument("-r", "--retry", type=int, default=10, help="max retry attempts, -1 for infinite retry (default: 10)")
     args = parser.parse_args()
     main(args.start, args.stop, args.timeout, args.retry)

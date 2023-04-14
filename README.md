@@ -9,7 +9,7 @@ This script is used to get the post information from danbooru.donmai.us. It will
 * start: The start post id.
 * stop: The stop post id, if not specified, it will be the same as start.
 * -t, timeout: The timeout for all request in seconds. Default is 3600.
-* -r, retry: The retry times for each request. Default is 10.
+* -r, retry: The retry times for each request, negative number means infinite retry. Default is 10
 * -h, --help: Show the help message and exit.
 ### Output
 The output file will be named as `<start>-<stop>.json` if stop is specified, or `<start>.json` if stop is not specified.
