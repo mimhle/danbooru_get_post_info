@@ -6,22 +6,31 @@ Usage:
     python danbooru_get_post_info.py -h | --help
 
 Options:
+    <start>       Start id.
+    [<stop>]        Stop id [default: <start>].
     -h --help       Show this screen.
-    -t --timeout    Timeout in seconds (for all posts) [default: 3600].
-    -r --retry      Retry times, -1 for infinite retry [default: 10].
+    -f --file       File name and path to save the result [default: <start>-<stop>.json].
+    -t --timeout    Timeout in seconds for each request [default: 300].
+    -r --retry      Max retries [default: 100].
+    --cooldown   Cooldown in seconds finishing each request [default: 1].
+    --concurrency   Max concurrent requests [default: 5].
+
 
 Returns:
     A json file with post info.
 """
 
-import argparse
+import os
+from typing import Iterable
+import asyncio
 import time
+import argparse
 import json
-import requests
-from tqdm.auto import tqdm
+import aiohttp
+from tqdm.asyncio import tqdm as atqdm
 
 
-def timer(func):
+def timer(func: callable) -> callable:
     def wrapper(*args, **kwargs):
         start_time = time.time()
         result = func(*args, **kwargs)
@@ -32,68 +41,117 @@ def timer(func):
     return wrapper
 
 
-def infinity():
-    while True:
-        yield True
-
-
 @timer
-def danbooru_post_info_request(min_id=1, max_id=10000000, timeout=43200, max_attempts=10):
-    result = []
-    time_ = time.time() + timeout
-    response = None
-    response_json = {}
-
-    if max_attempts < 0:
-        loop = infinity()
-    else:
-        loop = iter(list(range(max_attempts)))
-
-    with tqdm(total=max_id - min_id + 1) as pb:
-        for i in range(min_id, max_id + 1):
-            for attempt in loop:
-                try:
-                    curr_time = time.time()
-                    if curr_time >= time_:
-                        return result + [f"Stop at {i}, timeout {round(curr_time - (time_ - timeout), 1)}s in"]
-                    response = requests.get(f"https://danbooru.donmai.us/posts/{i}.json", timeout=100)
-                    response_json = response.json()
-                except KeyboardInterrupt:
-                    return result + [f"Stop at {i}, keyboard interrupt"]
-                except Exception as error:
-                    if attempt is not True and attempt >= max_attempts - 1:
-                        return result + [f"Stop at {i}, error {error}, response {response}"]
-                    else:
-                        time.sleep(0.1)
-                        continue
-                else:
-                    break
-            result.append(response_json)
-            pb.update(1)
-    return result
-
-
-@timer
-def save_to_json(inputs, file_name_and_path):
+def save_to_json(inputs: list[dict], file_name_and_path: str) -> None:
     with open(file_name_and_path, mode='w') as file:
         json.dump(inputs, file, indent=2)
 
 
-def main(start, stop=None, timeout=3600, max_attempts=10):
+@timer
+def get_post_info(
+        start: int = 1,
+        end: int = 100,
+        *,
+        batch_size: int = None,
+        concurrency: int = 10,
+        timeout: int = 60 * 60 * 2,
+        max_attempts: int = 1000,
+        cooldown: int = 1,
+) -> list[dict]:
+    # split list to chunks
+    def split_chunk(inp: Iterable, chunk_size: int) -> Iterable[tuple]:
+        chunks = []
+        while inp:
+            chunks.append(tuple(inp[:chunk_size]))
+            inp = inp[chunk_size:]
+        return chunks
+
+    # convert list of ids to urls
+    def get_urls(ids: Iterable[int]) -> Iterable[str]:
+        return (f"https://danbooru.donmai.us/posts/{i}.json" for i in ids)
+
+    # get the response for 1 url
+    async def get_request(url: str, *, session: aiohttp.ClientSession, retries: int = max_attempts) -> dict:
+        async with session.get(url) as response:
+            content_type = response.headers.get("Content-Type")
+
+            for _ in range(retries):
+                if "application/json" not in content_type:
+                    await asyncio.sleep(cooldown)
+                    continue
+                else:
+                    try:
+                        data = await response.read()
+                        await asyncio.sleep(cooldown)
+                        return json.loads(data)
+                    except Exception as e:
+                        print(f"{url}: {e}")
+                        await asyncio.sleep(cooldown)
+                        continue
+            else:
+                return {"Error": [f"{url}: Max retries reached"]}
+
+    # get the response for multiple urls
+    async def get_requests(urls: Iterable[str]) -> list[dict]:
+        connector = aiohttp.TCPConnector(limit=concurrency)
+        client_timeout = aiohttp.ClientTimeout(total=timeout)
+        semaphore = asyncio.Semaphore(concurrency)
+
+        async with semaphore:
+            async with aiohttp.ClientSession(connector=connector, timeout=client_timeout) as session:
+                tasks = [asyncio.create_task(get_request(url, session=session)) for url in urls]
+                results = await atqdm.gather(*tasks)
+                return results
+
+    # generate urls
+    ids = range(start, end + 1)
+    urls = tuple(get_urls(ids))
+    if batch_size:
+        urls = split_chunk(urls, batch_size)
+    else:
+        urls = [urls]
+
+    # get responses
+    print(f"Total batch count: {len(urls)}")
+    result = []
+    for i, batch in enumerate(urls):
+        print(f"Current batch: {i + 1}")
+        result.extend(asyncio.run(get_requests(batch)))
+    return result
+
+
+def main(start: int, stop: int, file_path: str = None, **kwargs) -> None:
     if not stop:
         stop = start
-    post_info = danbooru_post_info_request(start, stop, timeout, max_attempts)
-    if isinstance(post_info[-1], str):
-        print(post_info[-1])
-    file_name = f"{start}-{stop}.json" if start != stop else f"{start}.json"
-    save_to_json(post_info, file_name)
+
+    if file_path:
+        os.makedirs(os.path.dirname(file_path), exist_ok=True)
+        file_name = file_path
+    else:
+        file_name = f"{start}-{stop}.json" if start != stop else f"{start}.json"
+
+    save_to_json(get_post_info(start, stop, **kwargs), file_name)
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("start", type=int, help="start id")
-    parser.add_argument("stop", type=int, nargs="?", help="stop id")
-    parser.add_argument("-t", "--timeout", type=int, default=3600, help="timeout in seconds (all posts) (default: 3600)")
-    parser.add_argument("-r", "--retry", type=int, default=10, help="max retry attempts, -1 for infinite retry (default: 10)")
+    parser.add_argument("start", type=int, help="Start id")
+    parser.add_argument("stop", type=int, nargs="?", help="Stop id")
+    parser.add_argument("-f", "--file", type=str, nargs="?", help="File path (save to current directory with format: <start>-<stop>.json if not specified)")
+    parser.add_argument("-t", "--timeout", type=int, default=300, help="Timeout in seconds for each request (default: 300)")
+    parser.add_argument("-r", "--retry", type=int, default=100, help="Max retry attempts (default: 100)")
+    parser.add_argument("-b", "--batch-size", type=int, default=100, help="Batch size (default: 100)")
+    parser.add_argument("--concurrency", type=int, default=5, help="Number of concurrent requests (default: 5)")
+    parser.add_argument("--cooldown", type=int, default=1, help="Cooldown in seconds finishing each request (default: 1)")
     args = parser.parse_args()
-    main(args.start, args.stop, args.timeout, args.retry)
+    main(
+        args.start,
+        args.stop,
+        file_path=args.file,
+        timeout=args.timeout,
+        max_attempts=args.retry,
+        batch_size=args.batch_size,
+        concurrency=args.concurrency,
+        cooldown=args.cooldown,
+
+    )
