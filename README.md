@@ -1,7 +1,9 @@
 # danbooru_get_post_info
 This script is used to get the post information from danbooru.donmai.us. It will get the post information from the post id and save it to a json file in the same directory as the script.
 ## Usage
-### First, you need to install the required packages.
+### Install the required packages.
+Requires Python 3.10 or above.
+
 ```pip install -r requirements.txt```
 ### Then, you can run the script.
 ```python danbooru_get_post_info.py <start> [<stop>] [-t <timeout>] [-r <retry>]```
